@@ -5,7 +5,18 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
-type Customer = { id: string; name: string; phone: string | null; email: string | null };
+type Customer = {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+
+  company_name?: string | null;
+  company_address?: string | null;
+  company_eik?: string | null;
+  vat_number?: string | null;
+  company_mol?: string | null;
+};
 
 type WorkOrder = {
   id: string;
