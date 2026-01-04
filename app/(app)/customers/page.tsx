@@ -7,43 +7,29 @@ import { supabase } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type Customer = {
   id: string;
   name: string;
   phone: string | null;
   email: string | null;
-  created_at?: string;
 };
 
 export default function CustomersPage() {
-  const [rows, setRows] = useState<Customer[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<Customer[]>([]);
   const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(false);
 
   async function load() {
-    setError(null);
     setLoading(true);
-
     const { data, error } = await supabase
       .from("customers")
-      .select("id,name,phone,email,created_at")
-      .order("created_at", { ascending: false })
-      .limit(2000);
+      .select("id,name,phone,email")
+      .order("name", { ascending: true });
 
+    if (!error && data) setItems(data as Customer[]);
     setLoading(false);
-
-    if (error) return setError(error.message);
-    setRows((data ?? []) as any);
   }
 
   useEffect(() => {
@@ -51,22 +37,25 @@ export default function CustomersPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    if (!needle) return rows;
-
-    return rows.filter((c) => {
-      const hay = `${c.name} ${c.phone ?? ""} ${c.email ?? ""}`.toLowerCase();
-      return hay.includes(needle);
+    const s = q.trim().toLowerCase();
+    if (!s) return items;
+    return items.filter((c) => {
+      return (
+        (c.name || "").toLowerCase().includes(s) ||
+        (c.phone || "").toLowerCase().includes(s) ||
+        (c.email || "").toLowerCase().includes(s)
+      );
     });
-  }, [rows, q]);
+  }, [items, q]);
 
   return (
-    <div className="mx-auto max-w-6xl p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-6 slide-up">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Клиенти</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1 className="text-4xl font-bold text-white tracking-tight">
+            Клиенти <span className="text-orange-300">•</span>
+          </h1>
+          <p className="mt-2 text-gray-300">
             Списък с всички клиенти и бърз достъп до техните работни карти.
           </p>
         </div>
@@ -76,103 +65,76 @@ export default function CustomersPage() {
         </Button>
       </div>
 
-      {/* Filters */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Търсене</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Търси: име / телефон / email"
-            className="w-full sm:max-w-md"
-          />
-
+        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <CardTitle>Търсене</CardTitle>
           <div className="flex items-center gap-3">
-            <Button variant="secondary" onClick={load}>
+            <Button variant="outline" onClick={load} disabled={loading}>
               ↻ Refresh
             </Button>
-            <div className="text-sm text-muted-foreground">
-              {filtered.length} / {rows.length}
+            <div className="text-sm text-gray-300">
+              <span className="text-orange-300 font-semibold">{filtered.length}</span> / {items.length}
             </div>
+          </div>
+        </CardHeader>
+
+        <CardContent>
+          <div className="max-w-2xl">
+            <Input
+              placeholder="Търси: име / телефон / email"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
           </div>
         </CardContent>
       </Card>
 
-      {/* States */}
-      {error && (
-        <Card className="border-destructive/40">
-          <CardContent className="py-4 text-sm text-destructive">
-            Грешка: {error}
-          </CardContent>
-        </Card>
-      )}
+      <Card>
+        <CardContent className="pt-2">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Име</TableHead>
+                <TableHead>Телефон</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead className="text-right">Действия</TableHead>
+              </TableRow>
+            </TableHeader>
 
-      {loading && (
-        <Card>
-          <CardContent className="py-10 text-sm text-muted-foreground">
-            Зареждане...
-          </CardContent>
-        </Card>
-      )}
-
-      {!loading && filtered.length === 0 && (
-        <Card>
-          <CardContent className="py-10 text-sm text-muted-foreground">
-            Няма резултати.
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Table */}
-      {!loading && filtered.length > 0 && (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Име</TableHead>
-                  <TableHead>Телефон</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead className="text-right">Действия</TableHead>
+            <TableBody>
+              {filtered.map((c) => (
+                <TableRow key={c.id}>
+                  <TableCell className="font-medium">
+                    <Link className="text-white hover:text-orange-200 transition" href={`/customers/${c.id}`}>
+                      {c.name}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-gray-200">{c.phone ?? ""}</TableCell>
+                  <TableCell className="text-gray-200">{c.email ?? ""}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button asChild variant="outline">
+                        <Link href={`/customers/${c.id}/work-orders`}>📄 Работни карти</Link>
+                      </Button>
+                      <Button asChild variant="ghost" className="px-3">
+                        <Link href={`/customers/${c.id}/edit`}>✏️</Link>
+                      </Button>
+                    </div>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
+              ))}
 
-              <TableBody>
-                {filtered.map((c) => (
-                  <TableRow key={c.id} className="hover:bg-muted/50">
-                    <TableCell className="font-medium">
-                      <Link
-                        href={`/customers/${c.id}`}
-                        className="hover:underline"
-                      >
-                        {c.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{c.phone ?? "—"}</TableCell>
-                    <TableCell>{c.email ?? "—"}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="inline-flex gap-2 justify-end">
-                        <Button variant="outline" size="sm" asChild>
-                          <Link href={`/customers/${c.id}`}>
-                            📄 Работни карти
-                          </Link>
-                        </Button>
-                        <Button variant="secondary" size="sm" asChild>
-                          <Link href={`/customers/${c.id}/edit`}>
-                            ✏️ Редактирай
-                          </Link>
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+              {filtered.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-10 text-center text-gray-400">
+                    Няма резултати.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 }
