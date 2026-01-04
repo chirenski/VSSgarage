@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 
 type VehicleRow = {
   id: string;
@@ -24,46 +29,121 @@ type CustomerRow = {
 
 export default function NewWorkOrderPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const customerIdParam = searchParams.get("customerId");
+
   const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
-  const [customersById, setCustomersById] = useState<Record<string, CustomerRow>>({});
+  const [customersById, setCustomersById] = useState<Record<string, CustomerRow>>(
+    {}
+  );
+
   const [vehicleId, setVehicleId] = useState("");
+  const [vehicleOpen, setVehicleOpen] = useState(false);
+  const [vehicleSearch, setVehicleSearch] = useState("");
+
   const [complaint, setComplaint] = useState("");
   const [mileage, setMileage] = useState<string>("");
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const vehicleBoxRef = useRef<HTMLDivElement | null>(null);
+
+  const accentOutline =
+    "accent-ring border-orange-400/30 hover:border-orange-400/50 hover:bg-orange-500/10 hover:shadow-orange-500/25";
+
+  useEffect(() => {
+    function onDocDown(e: MouseEvent) {
+      if (!vehicleBoxRef.current) return;
+      if (!vehicleBoxRef.current.contains(e.target as Node)) {
+        setVehicleOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocDown);
+    return () => document.removeEventListener("mousedown", onDocDown);
+  }, []);
 
   useEffect(() => {
     (async () => {
+      setLoading(true);
+      setError(null);
+
       const { data: cust, error: e1 } = await supabase
         .from("customers")
         .select("id,name,phone")
-        .order("name", { ascending: true })
-        .limit(1000);
+        .order("name", { ascending: true });
 
-      if (e1) return setError(e1.message);
+      if (e1) {
+        setError(e1.message);
+        setLoading(false);
+        return;
+      }
 
       const map: Record<string, CustomerRow> = {};
-      (cust ?? []).forEach((c) => (map[c.id] = c));
+      (cust ?? []).forEach((c: any) => (map[c.id] = c));
       setCustomersById(map);
 
-      const { data: veh, error: e2 } = await supabase
+      const { data: v, error: e2 } = await supabase
         .from("vehicles")
         .select("id,reg_number,vin,make,model,year,engine,mileage,customer_id")
-        .order("updated_at", { ascending: false })
-        .limit(2000);
+        .order("reg_number", { ascending: true });
 
-      if (e2) return setError(e2.message);
-      setVehicles(veh ?? []);
+      if (e2) {
+        setError(e2.message);
+        setLoading(false);
+        return;
+      }
+
+      setVehicles((v ?? []) as any);
+      setLoading(false);
     })();
   }, []);
+
+  const vehiclesForCustomer = useMemo(() => {
+    if (!customerIdParam) return vehicles;
+    return vehicles.filter((v) => v.customer_id === customerIdParam);
+  }, [vehicles, customerIdParam]);
+
+  const filteredVehicles = useMemo(() => {
+    const base = vehiclesForCustomer;
+    const s = vehicleSearch.trim().toLowerCase();
+    if (!s) return base;
+
+    return base.filter((v) => {
+      const label = [
+        v.reg_number,
+        v.make ?? "",
+        v.model ?? "",
+        v.year ? String(v.year) : "",
+        v.vin ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return label.includes(s);
+    });
+  }, [vehiclesForCustomer, vehicleSearch]);
 
   const selectedVehicle = useMemo(
     () => vehicles.find((v) => v.id === vehicleId) ?? null,
     [vehicles, vehicleId]
   );
 
-  async function createWorkOrder(e: React.FormEvent) {
+  const selectedCustomer = selectedVehicle
+    ? customersById[selectedVehicle.customer_id]
+    : null;
+
+  const selectedVehicleLabel = useMemo(() => {
+    if (!selectedVehicle) return "— Избери автомобил —";
+    const parts = [
+      selectedVehicle.reg_number,
+      [selectedVehicle.make, selectedVehicle.model].filter(Boolean).join(" "),
+      selectedVehicle.year ? `(${selectedVehicle.year})` : "",
+    ].filter(Boolean);
+    return parts.join(" ");
+  }, [selectedVehicle]);
+
+  async function createOrder(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
@@ -80,8 +160,9 @@ export default function NewWorkOrderPage() {
 
     setSaving(true);
 
-    // 1) next number from DB
-    const { data: numData, error: numErr } = await supabase.rpc("next_work_order_number");
+    const { data: numData, error: numErr } = await supabase.rpc(
+      "next_work_order_number"
+    );
     if (numErr) {
       setSaving(false);
       setError("Не мога да взема следващ номер: " + numErr.message);
@@ -89,7 +170,6 @@ export default function NewWorkOrderPage() {
     }
     const nextNumber = String(numData);
 
-    // 2) insert snapshot work order
     const { data: inserted, error: insErr } = await supabase
       .from("work_orders")
       .insert({
@@ -109,7 +189,7 @@ export default function NewWorkOrderPage() {
         vehicle_engine: selectedVehicle.engine,
 
         mileage: mileage ? Number(mileage) : selectedVehicle.mileage,
-        complaint: complaint || null,
+        complaint: complaint.trim() || null,
       })
       .select("id")
       .single();
@@ -125,52 +205,185 @@ export default function NewWorkOrderPage() {
   }
 
   return (
-    <div style={{ maxWidth: 720 }}>
-      <h1 style={{ marginTop: 0 }}>Нова работна карта</h1>
+    <div className="space-y-6 slide-up">
+      {/* Header */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h1 className="text-4xl font-bold text-white tracking-tight">
+            Нова поръчка <span className="text-orange-300">•</span>
+          </h1>
+          <p className="mt-2 text-gray-300">
+            Избери автомобил, въведи оплакване и (по желание) километри. След
+            създаване ще отидеш към детайла на поръчката.
+          </p>
+        </div>
 
-      <form onSubmit={createWorkOrder} style={{ display: "grid", gap: 10 }}>
-        <label>
-          Автомобил
-          <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} style={{ width: "100%", padding: 10 }}>
-            <option value="">— избери —</option>
-            {vehicles.map((v) => {
-              const c = customersById[v.customer_id];
-              const label = `${v.reg_number} — ${v.make ?? ""} ${v.model ?? ""}${c ? ` (${c.name})` : ""}`;
-              return (
-                <option key={v.id} value={v.id}>
-                  {label}
-                </option>
-              );
-            })}
-          </select>
-        </label>
+        <Button asChild variant="outline" className={accentOutline}>
+          <Link href="/work-orders">← Назад</Link>
+        </Button>
+      </div>
 
-        <label>
-          Км (по желание)
-          <input value={mileage} onChange={(e) => setMileage(e.target.value)} inputMode="numeric" style={{ width: "100%", padding: 10 }} />
-        </label>
+      <Card>
+        <CardHeader>
+          <CardTitle>Данни за поръчката</CardTitle>
+        </CardHeader>
 
-        <label>
-          Оплакване / задача
-          <textarea value={complaint} onChange={(e) => setComplaint(e.target.value)} rows={4} style={{ width: "100%", padding: 10 }} />
-        </label>
+        <CardContent className="space-y-4">
+          {error && <div className="text-sm text-red-300">{error}</div>}
+          {loading && <div className="text-sm text-gray-400">Зареждане...</div>}
 
-        {selectedVehicle && (
-          <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
-            <div><b>Избран:</b> {selectedVehicle.reg_number}</div>
-            <div>
-              <b>Автомобил:</b> {(selectedVehicle.make ?? "—") + " " + (selectedVehicle.model ?? "")} ({selectedVehicle.year ?? "—"})
+          <form onSubmit={createOrder} className="space-y-4">
+            {/* Vehicle - custom dropdown */}
+            <div className="space-y-2" ref={vehicleBoxRef}>
+              <label className="text-sm text-gray-200">Автомобил</label>
+
+              <button
+                type="button"
+                onClick={() => setVehicleOpen((v) => !v)}
+                disabled={loading}
+                className={[
+                  "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left text-sm text-white",
+                  "outline-none transition focus:ring-4 focus:ring-orange-500/15",
+                  "hover:bg-white/10",
+                  loading ? "opacity-60" : "",
+                ].join(" ")}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className={selectedVehicle ? "text-white" : "text-white/60"}>
+                    {selectedVehicleLabel}
+                  </span>
+                  <span className="text-white/60">▾</span>
+                </div>
+              </button>
+
+              {vehicleOpen && (
+                <div className="relative">
+                  <div className="absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-white/10 bg-[#0b0f14]/95 shadow-2xl backdrop-blur">
+                    <div className="p-3 border-b border-white/10">
+                      <Input
+                        value={vehicleSearch}
+                        onChange={(e) => setVehicleSearch(e.target.value)}
+                        placeholder="Търси: рег. № / марка / модел / VIN"
+                      />
+                    </div>
+
+                    <div className="max-h-64 overflow-auto p-1">
+                      {filteredVehicles.length === 0 && (
+                        <div className="px-3 py-3 text-sm text-white/60">
+                          Няма резултати.
+                        </div>
+                      )}
+
+                      {filteredVehicles.map((v) => {
+                        const label = [
+                          v.reg_number,
+                          [v.make, v.model].filter(Boolean).join(" "),
+                          v.year ? `(${v.year})` : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ");
+
+                        const isActive = v.id === vehicleId;
+
+                        return (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => {
+                              setVehicleId(v.id);
+                              setVehicleOpen(false);
+                              setVehicleSearch("");
+                            }}
+                            className={[
+                              "w-full rounded-lg px-3 py-2 text-left text-sm transition",
+                              isActive
+                                ? "bg-orange-500/10 text-orange-100"
+                                : "text-white/90 hover:bg-white/5",
+                            ].join(" ")}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="font-medium">{label}</span>
+                              <span className="text-xs text-white/50">{v.vin ?? ""}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {customerIdParam && vehiclesForCustomer.length === 0 && (
+                <div className="text-sm text-gray-400">
+                  Няма автомобили за този клиент.
+                </div>
+              )}
             </div>
-            <div><b>VIN:</b> {selectedVehicle.vin ?? "—"}</div>
-          </div>
-        )}
 
-        {error && <div style={{ color: "crimson" }}>{error}</div>}
+            {/* Mileage */}
+            <div className="space-y-2">
+              <label className="text-sm text-gray-200">Км (по желание)</label>
+              <Input
+                value={mileage}
+                onChange={(e) => setMileage(e.target.value)}
+                placeholder="например 184500"
+                inputMode="numeric"
+              />
+            </div>
 
-        <button disabled={saving} style={{ padding: 12 }}>
-          {saving ? "Създаване..." : "Създай работна карта"}
-        </button>
-      </form>
+            {/* Complaint */}
+            <div className="space-y-2">
+              <label className="text-sm text-gray-200">Оплакване / задача</label>
+              <textarea
+                value={complaint}
+                onChange={(e) => setComplaint(e.target.value)}
+                rows={4}
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none transition focus:ring-4 focus:ring-orange-500/15"
+                placeholder="Какво да се направи?"
+              />
+            </div>
+
+            {/* Summary */}
+            {selectedVehicle && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Избрано</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-1 text-sm text-gray-200">
+                  <div>
+                    <b>Клиент:</b> {selectedCustomer?.name ?? "—"}
+                    {selectedCustomer?.phone ? ` • ${selectedCustomer.phone}` : ""}
+                  </div>
+                  <div>
+                    <b>Автомобил:</b> {selectedVehicle.reg_number}{" "}
+                    {(selectedVehicle.make || selectedVehicle.model) && (
+                      <span className="text-gray-300">
+                        • {[selectedVehicle.make, selectedVehicle.model]
+                          .filter(Boolean)
+                          .join(" ")}
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <b>VIN:</b> {selectedVehicle.vin ?? "—"}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                type="submit"
+                variant="outline"
+                className={accentOutline}
+                disabled={saving || loading}
+              >
+                {saving ? "Създаване..." : "Създай поръчка"}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

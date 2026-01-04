@@ -3,6 +3,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { IconAction } from "@/components/ui/icon-action";
+
 type InvoiceRow = {
   id: string;
   number: string;
@@ -28,9 +40,11 @@ export default function ReportsPage() {
   const [to, setTo] = useState(todayISO());
   const [rows, setRows] = useState<InvoiceRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   async function load() {
     setError(null);
+    setLoading(true);
 
     const { data, error } = await supabase
       .from("invoices")
@@ -38,6 +52,8 @@ export default function ReportsPage() {
       .gte("issue_date", from)
       .lte("issue_date", to)
       .order("issue_date", { ascending: false });
+
+    setLoading(false);
 
     if (error) return setError(error.message);
     setRows((data ?? []) as any);
@@ -74,68 +90,166 @@ export default function ReportsPage() {
     };
   }, [rows]);
 
+  function fmtMoney(x: any) {
+    return `${Number(x ?? 0).toFixed(2)} EUR`;
+  }
+
   return (
-    <div style={{ padding: 20, maxWidth: 1100 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>Отчети</h1>
-        <button onClick={load}>↻ Обнови</button>
-      </div>
-
-      <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <label>
-          От:
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ marginLeft: 8, padding: 8 }} />
-        </label>
-        <label>
-          До:
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ marginLeft: 8, padding: 8 }} />
-        </label>
-        <button onClick={load} style={{ padding: 10 }}>Покажи</button>
-      </div>
-
-      {error && <div style={{ color: "crimson", marginTop: 10 }}>Грешка: {error}</div>}
-
-      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
-          <h3 style={{ marginTop: 0 }}>Оборот</h3>
-          <div><b>ISSUED + PAID:</b> {totals.sumIssued.toFixed(2)} EUR ({totals.countIssued} фактури)</div>
-          <div><b>PAID:</b> {totals.sumPaid.toFixed(2)} EUR ({totals.countPaid} фактури)</div>
+    <div className="space-y-6 slide-up">
+      {/* Header */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h1 className="text-4xl font-bold text-white tracking-tight">
+            Отчети <span className="text-orange-300">•</span>
+          </h1>
+          <p className="mt-2 text-gray-300">
+            Обобщение по период на база фактури.
+          </p>
         </div>
 
-        <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
-          <h3 style={{ marginTop: 0 }}>Състояние</h3>
-          <div><b>DRAFT:</b> {totals.sumDraft.toFixed(2)} EUR ({totals.countDraft})</div>
-          <div><b>CANCELED:</b> {totals.sumCanceled.toFixed(2)} EUR ({totals.countCanceled})</div>
-          <div><b>Всички:</b> {totals.sumAll.toFixed(2)} EUR ({totals.countAll})</div>
-        </div>
+        <IconAction
+          onClick={load}
+          size="icon"
+          title="Обнови"
+          aria-label="Обнови отчета"
+          tooltip="Обнови"
+          hoverSpin
+          spin={loading}
+          disabled={loading}
+        >
+          ↻
+        </IconAction>
       </div>
 
-      <div style={{ marginTop: 12, border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Фактури (по период)</h3>
+      {/* Filters */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <CardTitle>Период</CardTitle>
+          <IconAction
+            onClick={load}
+            size="text"
+            title="Покажи"
+            tooltip="Покажи"
+            disabled={loading}
+            className={loading ? "opacity-60 pointer-events-none" : ""}
+          >
+            Покажи
+          </IconAction>
+        </CardHeader>
 
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>№</th>
-              <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Дата</th>
-              <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Статус</th>
-              <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Платена</th>
-              <th style={{ textAlign: "right", borderBottom: "1px solid #ddd", padding: 8 }}>Сума</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{r.number}</td>
-                <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{r.issue_date}</td>
-                <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{r.status}</td>
-                <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{r.paid_at ? new Date(r.paid_at).toLocaleString("bg-BG") : "—"}</td>
-                <td style={{ padding: 8, borderBottom: "1px solid #eee", textAlign: "right" }}>{Number(r.total_eur ?? 0).toFixed(2)} EUR</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-sm text-gray-200">От</label>
+              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm text-gray-200">До</label>
+              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            </div>
+          </div>
+
+          {error && <div className="text-sm text-red-300">{error}</div>}
+        </CardContent>
+      </Card>
+
+      {/* Summary */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Оборот</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-gray-200">
+            <div>
+              <span className="text-white/80 font-medium">ISSUED + PAID:</span>{" "}
+              {fmtMoney(totals.sumIssued)}{" "}
+              <span className="text-white/50">({totals.countIssued} фактури)</span>
+            </div>
+            <div>
+              <span className="text-white/80 font-medium">PAID:</span>{" "}
+              {fmtMoney(totals.sumPaid)}{" "}
+              <span className="text-white/50">({totals.countPaid} фактури)</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Състояние</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-gray-200">
+            <div>
+              <span className="text-white/80 font-medium">DRAFT:</span>{" "}
+              {fmtMoney(totals.sumDraft)}{" "}
+              <span className="text-white/50">({totals.countDraft})</span>
+            </div>
+            <div>
+              <span className="text-white/80 font-medium">CANCELED:</span>{" "}
+              {fmtMoney(totals.sumCanceled)}{" "}
+              <span className="text-white/50">({totals.countCanceled})</span>
+            </div>
+            <div>
+              <span className="text-white/80 font-medium">Всички:</span>{" "}
+              {fmtMoney(totals.sumAll)}{" "}
+              <span className="text-white/50">({totals.countAll})</span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Фактури (по период)</CardTitle>
+        </CardHeader>
+
+        <CardContent className="pt-2">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>№</TableHead>
+                <TableHead>Дата</TableHead>
+                <TableHead>Статус</TableHead>
+                <TableHead>Платена</TableHead>
+                <TableHead className="text-right">Сума</TableHead>
+              </TableRow>
+            </TableHeader>
+
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell className="font-medium text-white">{r.number}</TableCell>
+                  <TableCell className="text-gray-200">{r.issue_date}</TableCell>
+                  <TableCell className="text-gray-200">{r.status}</TableCell>
+                  <TableCell className="text-gray-200">
+                    {r.paid_at ? new Date(r.paid_at).toLocaleString("bg-BG") : "—"}
+                  </TableCell>
+                  <TableCell className="text-right text-gray-200">
+                    {fmtMoney(r.total_eur)}
+                  </TableCell>
+                </TableRow>
+              ))}
+
+              {!loading && rows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-10 text-center text-gray-400">
+                    Няма данни за периода.
+                  </TableCell>
+                </TableRow>
+              )}
+
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-10 text-center text-gray-400">
+                    Зареждане...
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 }

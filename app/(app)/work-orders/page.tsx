@@ -2,224 +2,268 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
-type WorkOrder = {
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { IconAction } from "@/components/ui/icon-action";
+
+type WorkOrderRow = {
   id: string;
   number: string;
   status: string;
   received_at: string | null;
-
-  vehicle_reg: string | null;
-  vehicle_vin: string | null;
-
-  customer_name: string | null;
-  customer_phone: string | null;
-
-  mileage: number | null;
+  customer_id: string;
+  customer_name: string;
+  vehicle_reg: string;
 };
 
-const STATUSES = ["ALL", "RECEIVED", "IN_PROGRESS", "WAITING_PARTS", "READY", "DELIVERED", "CANCELED"] as const;
-type StatusFilter = (typeof STATUSES)[number];
-
 export default function WorkOrdersPage() {
-  const [rows, setRows] = useState<WorkOrder[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const searchParams = useSearchParams();
+  const customerId = searchParams.get("customerId");
 
+  const [items, setItems] = useState<WorkOrderRow[]>([]);
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("ALL");
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // ✅ per-row deleting state (не блокира цялата таблица)
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const accentOutline =
+    "accent-ring border-orange-400/30 hover:border-orange-400/50 hover:bg-orange-500/10 hover:shadow-orange-500/25";
+
+  const newOrderHref = customerId
+    ? `/work-orders/new?customerId=${encodeURIComponent(customerId)}`
+    : "/work-orders/new";
 
   async function load() {
-    setError(null);
     setLoading(true);
+    setError(null);
 
-    // дърпаме повече и филтрираме локално (по-бързо за малък сервиз)
-    const { data, error } = await supabase
+    let query = supabase
       .from("work_orders")
-      .select("id,number,status,received_at,vehicle_reg,vehicle_vin,customer_name,customer_phone,mileage")
-      .order("received_at", { ascending: false })
-      .limit(500);
+      .select("id,number,status,received_at,customer_id,customer_name,vehicle_reg")
+      .order("received_at", { ascending: false });
 
-    setLoading(false);
+    if (customerId) query = query.eq("customer_id", customerId);
+
+    const { data, error } = await query;
 
     if (error) {
       setError(error.message);
+      setItems([]);
+    } else {
+      setItems((data ?? []) as WorkOrderRow[]);
+    }
+
+    setLoading(false);
+  }
+
+  async function deleteOrder(id: string, number: string) {
+    const ok = confirm(`Сигурен ли си, че искаш да изтриеш поръчка №${number}?`);
+    if (!ok) return;
+
+    setDeletingId(id);
+
+    const { error } = await supabase.from("work_orders").delete().eq("id", id);
+
+    setDeletingId(null);
+
+    if (error) {
+      alert(error.message);
       return;
     }
 
-    setRows((data ?? []) as WorkOrder[]);
+    // optimistic update
+    setItems((prev) => prev.filter((x) => x.id !== id));
   }
 
   useEffect(() => {
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerId]);
 
   const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
+    const s = q.trim().toLowerCase();
+    if (!s) return items;
 
-    return rows.filter((w) => {
-      if (status !== "ALL" && w.status !== status) return false;
-
-      if (!needle) return true;
-
-      const hay = [
-        w.number,
-        w.status,
-        w.vehicle_reg ?? "",
-        w.vehicle_vin ?? "",
-        w.customer_name ?? "",
-        w.customer_phone ?? "",
-        String(w.mileage ?? ""),
-      ]
-        .join(" ")
-        .toLowerCase();
-
-      return hay.includes(needle);
+    return items.filter((w) => {
+      return (
+        (w.number || "").toLowerCase().includes(s) ||
+        (w.customer_name || "").toLowerCase().includes(s) ||
+        (w.vehicle_reg || "").toLowerCase().includes(s) ||
+        (w.status || "").toLowerCase().includes(s)
+      );
     });
-  }, [rows, q, status]);
+  }, [items, q]);
 
-  async function quickStatus(id: string, newStatus: string) {
-    setError(null);
-    setBusyId(id);
-
-    const delivered_at = newStatus === "DELIVERED" ? new Date().toISOString() : null;
-
-    const { error } = await supabase
-      .from("work_orders")
-      .update({ status: newStatus, delivered_at })
-      .eq("id", id);
-
-    setBusyId(null);
-
-    if (error) {
-      setError(error.message);
-      return;
+  function formatDate(iso: string | null) {
+    if (!iso) return "—";
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString("bg-BG", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return iso;
     }
-
-    // update локално без да теглим пак
-    setRows((prev) =>
-      prev.map((w) =>
-        w.id === id ? { ...w, status: newStatus, received_at: w.received_at } : w
-      )
-    );
   }
 
   return (
-    <div style={{ padding: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <h1 style={{ margin: 0 }}>Работни карти</h1>
-        <Link href="/work-orders/new">+ Нова РК</Link>
+    <div className="space-y-6 slide-up">
+      {/* Header */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h1 className="text-4xl font-bold text-white tracking-tight">
+            Поръчки <span className="text-orange-300">•</span>
+          </h1>
+          <p className="mt-2 text-gray-300">
+            {customerId
+              ? "Показани са поръчките само за избрания клиент."
+              : "Всички поръчки, търсене по номер, клиент, рег. номер или статус."}
+          </p>
+        </div>
+
+        <Button asChild variant="outline" className={accentOutline}>
+          <Link href={newOrderHref}>+ Нова поръчка</Link>
+        </Button>
       </div>
 
-      {/* Controls */}
-      <div
-        style={{
-          marginTop: 12,
-          display: "flex",
-          gap: 10,
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Търси: № РК / рег. № / VIN / телефон / име"
-          style={{ padding: 10, minWidth: 320, flex: 1, border: "1px solid #ccc", borderRadius: 8 }}
-        />
+      {/* Search */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <CardTitle>Търсене</CardTitle>
+          <div className="flex items-center gap-3">
+            {/* ✅ Refresh = icon only + hover spin + spin while loading */}
+            <IconAction
+              onClick={load}
+              size="icon"
+              title="Обнови"
+              aria-label="Обнови списъка"
+              tooltip="Обнови"
+              hoverSpin
+              spin={loading}
+              disabled={loading}
+            >
+              ↻
+            </IconAction>
 
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value as StatusFilter)}
-          style={{ padding: 10, borderRadius: 8 }}
-        >
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s === "ALL" ? "Всички статуси" : s}
-            </option>
-          ))}
-        </select>
+            <span className="text-sm text-orange-200">
+              {filtered.length} / {items.length}
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Търси: № поръчка / клиент / рег. номер / статус"
+          />
+          {error && <div className="text-sm text-red-300">{error}</div>}
+        </CardContent>
+      </Card>
 
-        <button type="button" onClick={load} style={{ padding: 10, borderRadius: 8 }}>
-          ↻ Refresh
-        </button>
+      {/* Table */}
+      <Card>
+        <CardContent className="pt-2">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>№</TableHead>
+                <TableHead>Клиент</TableHead>
+                <TableHead>Автомобил</TableHead>
+                <TableHead>Статус</TableHead>
+                <TableHead>Приета</TableHead>
+                <TableHead className="text-right">Действия</TableHead>
+              </TableRow>
+            </TableHeader>
 
-        <span style={{ color: "#666" }}>
-          Показва: <b>{filtered.length}</b> / {rows.length}
-        </span>
-      </div>
+            <TableBody>
+              {filtered.map((w) => {
+                const isDeleting = deletingId === w.id;
 
-      {error && <div style={{ color: "crimson", marginTop: 10 }}>Грешка: {error}</div>}
-      {loading && <div style={{ marginTop: 10 }}>Зареждане...</div>}
+                return (
+                  <TableRow key={w.id}>
+                    <TableCell className="font-medium">
+                      <Link
+                        href={`/work-orders/${w.id}`}
+                        className="text-white hover:text-orange-200 transition"
+                      >
+                        {w.number}
+                      </Link>
+                    </TableCell>
 
-      {!loading && filtered.length === 0 && <p style={{ marginTop: 12 }}>Няма резултати.</p>}
+                    <TableCell className="text-gray-200">{w.customer_name}</TableCell>
+                    <TableCell className="text-gray-200">{w.vehicle_reg}</TableCell>
+                    <TableCell className="text-gray-200">{w.status}</TableCell>
+                    <TableCell className="text-gray-200">
+                      {formatDate(w.received_at)}
+                    </TableCell>
 
-      {!loading && filtered.length > 0 && (
-        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>№</th>
-              <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Статус</th>
-              <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Дата</th>
-              <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Автомобил</th>
-              <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Клиент</th>
-              <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Тел.</th>
-              <th style={{ textAlign: "right", borderBottom: "1px solid #ddd", padding: 8 }}>Км</th>
-              <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Бърз статус</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((w) => (
-              <tr key={w.id}>
-                <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                  <Link href={`/work-orders/${w.id}`}>{w.number}</Link>
-                </td>
-                <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{w.status}</td>
-                <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                  {w.received_at ? new Date(w.received_at).toLocaleString("bg-BG") : "—"}
-                </td>
-                <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{w.vehicle_reg ?? "—"}</td>
-                <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{w.customer_name ?? "—"}</td>
-                <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{w.customer_phone ?? "—"}</td>
-                <td style={{ padding: 8, borderBottom: "1px solid #eee", textAlign: "right" }}>
-                  {w.mileage ?? "—"}
-                </td>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        {/* Отвори */}
+                        <IconAction
+                          href={`/work-orders/${w.id}`}
+                          size="text"
+                          title="Отвори"
+                          tooltip="Отвори"
+                        >
+                          Отвори
+                        </IconAction>
 
-                <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      disabled={busyId === w.id}
-                      onClick={() => quickStatus(w.id, "IN_PROGRESS")}
-                      style={{ padding: "6px 8px", borderRadius: 8 }}
-                    >
-                      Работи се
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busyId === w.id}
-                      onClick={() => quickStatus(w.id, "READY")}
-                      style={{ padding: "6px 8px", borderRadius: 8 }}
-                    >
-                      Готов
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busyId === w.id}
-                      onClick={() => quickStatus(w.id, "DELIVERED")}
-                      style={{ padding: "6px 8px", borderRadius: 8 }}
-                    >
-                      Издаден
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+                        {/* Delete: danger + tooltip + disabled + spin while deleting */}
+                        <IconAction
+                          onClick={() => deleteOrder(w.id, w.number)}
+                          size="icon"
+                          title="Изтрий"
+                          tooltip={isDeleting ? "Изтриване..." : "Изтрий"}
+                          className="border-red-400/30 hover:border-red-400/50 hover:bg-red-500/10 hover:shadow-red-500/20 text-red-300 hover:text-red-200"
+                          disabled={isDeleting}
+                          spin={isDeleting}
+                        >
+                          🗑
+                        </IconAction>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+
+              {!loading && filtered.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-10 text-center text-gray-400">
+                    Няма поръчки.
+                  </TableCell>
+                </TableRow>
+              )}
+
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-10 text-center text-gray-400">
+                    Зареждане...
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 }

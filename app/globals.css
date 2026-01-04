@@ -53,3 +53,149 @@ body {
   color: #e7eaf0;
   font-feature-settings: "ss01" 1, "ss02" 1;
 }
+/* ===== PRINT FIX (Invoice / A4) ===== */
+@media print {
+  /* Force white paper */
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Kill app backgrounds/blur/shadows */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  /* Print page wrapper */
+  .print-root,
+  .print-root * {
+    background: #fff !important;
+    color: #000 !important;
+    border-color: #ddd !important;
+  }
+
+  /* Hide any navigation/UI if it exists on print route */
+  nav,
+  header,
+  footer,
+  aside,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Ensure full width */
+  .print-root {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}
+
+/* Simple A4 layout used by print page */
+.print-root {
+  background: #fff;
+  color: #000;
+}
+
+.print-root .a4 {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 14mm 14mm;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.print-root .row {
+  display: flex;
+  gap: 16px;
+}
+
+.print-root .between {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.print-root .right {
+  text-align: right;
+}
+
+.print-root .grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.print-root .h1 {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+
+.print-root .h2 {
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.print-root .b {
+  font-weight: 700;
+}
+
+.print-root .muted {
+  color: #444;
+}
+
+.print-root .hr {
+  border: 0;
+  border-top: 1px solid #ddd;
+  margin: 12px 0;
+}
+
+.print-root .t {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.print-root .t th,
+.print-root .t td {
+  border-bottom: 1px solid #e5e5e5;
+  padding: 8px 6px;
+  vertical-align: top;
+}
+
+.print-root .t th {
+  text-align: left;
+  font-weight: 800;
+  border-bottom: 2px solid #ddd;
+}
+
+.print-root .t .r {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.print-root .totals {
+  margin-top: 14px;
+  margin-left: auto;
+  width: 70mm;
+  border-top: 2px solid #ddd;
+  padding-top: 10px;
+}
+
+.print-root .big {
+  font-size: 14px;
+  margin-top: 6px;
+}
+
+.print-root .footer {
+  margin-top: 18px;
+  border-top: 1px solid #ddd;
+  padding-top: 10px;
+}
