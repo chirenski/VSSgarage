@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import * as React from "react";
-import { cn } from "@/lib/utils";
 
 type Props = {
   href?: string;
@@ -21,6 +20,11 @@ type Props = {
   hoverSpin?: boolean;
   spin?: boolean;
 };
+
+// Малък helper вместо "@/lib/utils"
+function cn(...classes: Array<string | undefined | false | null>) {
+  return classes.filter(Boolean).join(" ");
+}
 
 export function IconAction({
   href,
@@ -43,42 +47,21 @@ export function IconAction({
       ? "h-9 w-9 text-base leading-none"
       : "h-9 px-3 text-sm gap-2";
 
-  // Default look (match your orange theme)
+  // Default look (orange-ish)
   const theme =
     "border-orange-400/25 bg-white/5 hover:bg-white/10 hover:border-orange-400/45";
 
   const disabledCls = disabled ? "opacity-50 pointer-events-none" : "";
 
-  // Spin on hover / spinning state
-  const spinCls = cn(
+  // Spin behavior
+  const spinWrapCls = cn(
     (hoverSpin || spin) && "motion-safe:[&>span]:transition-transform",
     hoverSpin && "motion-safe:hover:[&>span]:rotate-180",
     spin && "motion-safe:[&>span]:animate-spin"
   );
 
-  const content = (
-    <span className={cn("inline-flex", spinCls)}>{children}</span>
-  );
+  const content = <span className={spinWrapCls}>{children}</span>;
 
-  const commonProps = {
+  const common = {
     title: tooltip ?? title,
     className: cn(base, sizeCls, theme, disabledCls, className),
-    ...rest,
-  } as const;
-
-  if (href) {
-    // Link variant
-    return (
-      <Link href={href} {...commonProps}>
-        {content}
-      </Link>
-    );
-  }
-
-  // Button variant
-  return (
-    <button type="button" onClick={onClick} disabled={disabled} {...commonProps}>
-      {content}
-    </button>
-  );
-}
