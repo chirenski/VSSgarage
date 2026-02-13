@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-export async function updateSession(request: NextRequest) {
+export async function getMiddlewareUserAndResponse(request: NextRequest) {
+  // Важно: правим response, върху който Supabase ще сетва cookies при refresh
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -21,8 +22,8 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // Refresh-ва сесията ако е нужно (важно за middleware)
-  await supabase.auth.getUser();
+  // getUser() в middleware контекст refresh-ва сесията, ако трябва
+  const { data } = await supabase.auth.getUser();
 
-  return response;
+  return { response, user: data.user ?? null };
 }
