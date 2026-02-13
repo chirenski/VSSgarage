@@ -32,6 +32,7 @@ export default function CustomersPage() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const accentOutline =
     "accent-ring border-orange-400/30 hover:border-orange-400/50 hover:bg-orange-500/10 hover:shadow-orange-500/25";
@@ -55,6 +56,39 @@ export default function CustomersPage() {
     setLoading(false);
   }
 
+  async function deleteCustomer(c: Customer) {
+    // UX: confirm
+    const ok = window.confirm(
+      `Сигурен ли си, че искаш да изтриеш клиента:\n\n${c.name}\n\nТова действие е необратимо.`
+    );
+    if (!ok) return;
+
+    setError(null);
+    setDeletingId(c.id);
+
+    const { error } = await supabase.from("customers").delete().eq("id", c.id);
+
+    setDeletingId(null);
+
+    if (error) {
+      // Често при FK ще върне error – даваме по-човешко съобщение
+      const msg =
+        error.message?.toLowerCase().includes("foreign key") ||
+        error.message?.toLowerCase().includes("violates") ||
+        error.message?.toLowerCase().includes("constraint")
+          ? "Не може да се изтрие клиентът, защото има свързани записи (автомобили/поръчки/фактури). Първо изтрий или прехвърли свързаните записи."
+          : error.message;
+
+      setError(msg);
+      return;
+    }
+
+    // Бърз update без мигане + презастраховка с reload
+    setRows((prev) => prev.filter((x) => x.id !== c.id));
+    // ако предпочиташ винаги да презарежда от DB:
+    // await load();
+  }
+
   useEffect(() => {
     load();
   }, []);
@@ -64,10 +98,7 @@ export default function CustomersPage() {
     if (!s) return rows;
 
     return rows.filter((c) =>
-      [c.name, c.phone ?? "", c.email ?? ""]
-        .join(" ")
-        .toLowerCase()
-        .includes(s)
+      [c.name, c.phone ?? "", c.email ?? ""].join(" ").toLowerCase().includes(s)
     );
   }, [rows, q]);
 
@@ -95,7 +126,6 @@ export default function CustomersPage() {
         <CardHeader className="flex flex-row items-center justify-between gap-4">
           <CardTitle>Търсене</CardTitle>
           <div className="flex items-center gap-3">
-            {/* ✅ Refresh = icon-only + hover spin + spin while loading + tooltip */}
             <IconAction
               onClick={load}
               size="icon"
@@ -139,43 +169,69 @@ export default function CustomersPage() {
             </TableHeader>
 
             <TableBody>
-              {filtered.map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell className="font-medium text-white">
-                    {c.name}
-                  </TableCell>
+              {filtered.map((c) => {
+                const isDeleting = deletingId === c.id;
 
-                  <TableCell className="text-gray-200">{c.phone ?? "—"}</TableCell>
-                  <TableCell className="text-gray-200">{c.email ?? "—"}</TableCell>
+                return (
+                  <TableRow key={c.id}>
+                    <TableCell className="font-medium text-white">
+                      {c.name}
+                    </TableCell>
 
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <IconAction
-                        size="text"
-                        onClick={() => router.push(`/work-orders?customerId=${c.id}`)}
-                        title="Поръчки"
-                        tooltip="Поръчки"
-                      >
-                        📄 Поръчки
-                      </IconAction>
+                    <TableCell className="text-gray-200">
+                      {c.phone ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-gray-200">
+                      {c.email ?? "—"}
+                    </TableCell>
 
-                      <IconAction
-                        href={`/customers/${c.id}`}
-                        size="icon"
-                        aria-label="Редакция на клиент"
-                        title="Редакция"
-                        tooltip="Редакция"
-                      >
-                        ✏️
-                      </IconAction>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <IconAction
+                          size="text"
+                          onClick={() =>
+                            router.push(`/work-orders?customerId=${c.id}`)
+                          }
+                          title="Поръчки"
+                          tooltip="Поръчки"
+                        >
+                          📄 Поръчки
+                        </IconAction>
+
+                        <IconAction
+                          href={`/customers/${c.id}`}
+                          size="icon"
+                          aria-label="Редакция на клиент"
+                          title="Редакция"
+                          tooltip="Редакция"
+                        >
+                          ✏️
+                        </IconAction>
+
+                        {/* 🗑️ Delete */}
+                        <IconAction
+                          size="icon"
+                          aria-label="Изтрий клиент"
+                          title="Изтрий"
+                          tooltip="Изтрий"
+                          disabled={loading || isDeleting}
+                          onClick={() => deleteCustomer(c)}
+                          className="border-red-400/25 hover:border-red-400/45 hover:bg-red-500/10 hover:shadow-red-500/15"
+                        >
+                          {isDeleting ? "⏳" : "🗑️"}
+                        </IconAction>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
 
               {!loading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="py-10 text-center text-gray-400">
+                  <TableCell
+                    colSpan={4}
+                    className="py-10 text-center text-gray-400"
+                  >
                     Няма клиенти.
                   </TableCell>
                 </TableRow>
@@ -183,7 +239,10 @@ export default function CustomersPage() {
 
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={4} className="py-10 text-center text-gray-400">
+                  <TableCell
+                    colSpan={4}
+                    className="py-10 text-center text-gray-400"
+                  >
                     Зареждане...
                   </TableCell>
                 </TableRow>
