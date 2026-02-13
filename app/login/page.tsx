@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,7 +26,7 @@ export default function LoginPage() {
     setErr(null);
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
@@ -37,9 +38,17 @@ export default function LoginPage() {
       return;
     }
 
-    // ✅ важно: replace + refresh (за да видят server/middleware cookie-тата веднага)
-    router.replace("/customers");
-    router.refresh();
+    // Ако по някаква причина няма сесия, показваме смислена грешка
+    if (!data.session) {
+      setErr("Липсва сесия след вход. Провери Supabase auth настройките.");
+      return;
+    }
+
+    // Връщаме към next, ако го има (middleware го слага)
+    const next = searchParams.get("next") || "/customers";
+
+    router.replace(next);
+    router.refresh(); // важно: да се “видят” cookies на server/middleware веднага
   }
 
   return (
