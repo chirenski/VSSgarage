@@ -32,14 +32,19 @@ export default function LoginPage() {
 
     setLoading(false);
 
-    if (error) setErr(error.message);
-    else router.replace("/customers");
+    if (error) {
+      setErr(error.message);
+      return;
+    }
+
+    // ✅ важно: replace + refresh (за да видят server/middleware cookie-тата веднага)
+    router.replace("/customers");
+    router.refresh();
   }
 
   return (
     <div className="min-h-screen bg-[#0b0f14] text-white flex items-center justify-center px-6 py-12">
       <div className="w-full max-w-md space-y-6 slide-up">
-        {/* Logo + intro */}
         <div className="flex flex-col items-center text-center gap-3">
           <div className="relative h-[70px] w-[240px]">
             <Image
@@ -62,7 +67,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Login card */}
         <Card>
           <CardHeader>
             <CardTitle>Данни за достъп</CardTitle>
