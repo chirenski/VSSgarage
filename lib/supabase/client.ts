@@ -5,16 +5,15 @@ export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   {
     auth: {
-      // ❌ НЕ пазим сесия след refresh / рестарт
-      persistSession: false,
+      // ✅ пазим сесия след refresh / рестарт
+      persistSession: true,
 
-      // ❌ НЕ refresh-ваме токена автоматично
-      autoRefreshToken: false,
+      // ✅ refresh-ваме токена автоматично
+      autoRefreshToken: true,
 
-      // ✅ нужно за auth redirects
+      // ✅ нужно за auth redirects (magic links, oauth callback и т.н.)
       detectSessionInUrl: true,
 
-      // ключът може да остане, но реално няма да се ползва
       storageKey: "vss-garage-auth",
     },
   }
