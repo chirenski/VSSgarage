@@ -2,90 +2,83 @@
 
 import Link from "next/link";
 import * as React from "react";
+import { cn } from "@/lib/utils";
 
-type IconActionProps = {
+type Props = {
   href?: string;
   onClick?: () => void;
-  title?: string;
-  "aria-label"?: string;
-  size?: "icon" | "text";
-  className?: string;
   children: React.ReactNode;
 
-  /** ако е true: върти съдържанието постоянно (за loading) */
-  spin?: boolean;
-
-  /** ако е true: върти леко на hover (подходящо за refresh) */
-  hoverSpin?: boolean;
-
-  /** tooltip text (ако не подадеш, ще ползва title) */
+  size?: "icon" | "text";
+  title?: string;
   tooltip?: string;
+  "aria-label"?: string;
 
   disabled?: boolean;
+  className?: string;
+
+  // optional “spin” behavior (used in your Customers page)
+  hoverSpin?: boolean;
+  spin?: boolean;
 };
 
 export function IconAction({
   href,
   onClick,
-  title,
-  size = "icon",
-  className = "",
   children,
-  spin = false,
-  hoverSpin = false,
+  size = "icon",
+  title,
   tooltip,
-  disabled = false,
+  disabled,
+  className,
+  hoverSpin,
+  spin,
   ...rest
-}: IconActionProps) {
+}: Props) {
   const base =
-    "group relative inline-flex items-center justify-center rounded-lg border border-orange-400/25 bg-white/5 text-white/80 " +
-    "transition-all duration-200 ease-out " +
-    "hover:border-orange-400/45 hover:bg-orange-500/10 hover:text-white hover:shadow-orange-500/15 " +
-    "focus:outline-none focus:ring-4 focus:ring-orange-500/15 " +
-    "active:scale-[0.98]";
+    "inline-flex items-center justify-center rounded-lg border transition-all select-none";
 
-  const sizing = size === "icon" ? "h-9 w-9" : "h-9 px-3";
+  const sizeCls =
+    size === "icon"
+      ? "h-9 w-9 text-base leading-none"
+      : "h-9 px-3 text-sm gap-2";
 
-  const disabledCls = disabled ? "opacity-60 pointer-events-none" : "";
+  // Default look (match your orange theme)
+  const theme =
+    "border-orange-400/25 bg-white/5 hover:bg-white/10 hover:border-orange-400/45";
 
-  const Comp: any = href ? Link : "button";
+  const disabledCls = disabled ? "opacity-50 pointer-events-none" : "";
 
-  const tip = tooltip ?? title;
+  // Spin on hover / spinning state
+  const spinCls = cn(
+    (hoverSpin || spin) && "motion-safe:[&>span]:transition-transform",
+    hoverSpin && "motion-safe:hover:[&>span]:rotate-180",
+    spin && "motion-safe:[&>span]:animate-spin"
+  );
 
-  const innerCls = [
-    "inline-flex items-center gap-2 transition-transform duration-200",
-    "group-hover:rotate-[-4deg] group-hover:scale-[1.06]",
-    hoverSpin ? "group-hover:rotate-[180deg]" : "",
-    spin ? "animate-spin" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const content = (
+    <span className={cn("inline-flex", spinCls)}>{children}</span>
+  );
 
+  const commonProps = {
+    title: tooltip ?? title,
+    className: cn(base, sizeCls, theme, disabledCls, className),
+    ...rest,
+  } as const;
+
+  if (href) {
+    // Link variant
+    return (
+      <Link href={href} {...commonProps}>
+        {content}
+      </Link>
+    );
+  }
+
+  // Button variant
   return (
-    <Comp
-      href={href as any}
-      onClick={onClick}
-      title={title}
-      className={`${base} ${sizing} ${disabledCls} ${className}`}
-      aria-disabled={disabled ? true : undefined}
-      {...rest}
-    >
-      <span className={innerCls}>{children}</span>
-
-      {tip && (
-        <span
-          className={[
-            "pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2",
-            "rounded-md border border-white/10 bg-[#0b0f14]/95 px-2 py-1 text-xs text-white/80",
-            "opacity-0 translate-y-1 transition duration-150",
-            "group-hover:opacity-100 group-hover:translate-y-0",
-            "shadow-xl backdrop-blur",
-            "whitespace-nowrap",
-          ].join(" ")}
-        >
-          {tip}
-        </span>
-      )}
-    </Comp>
+    <button type="button" onClick={onClick} disabled={disabled} {...commonProps}>
+      {content}
+    </button>
   );
 }
