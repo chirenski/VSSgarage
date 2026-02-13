@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareUserAndResponse } from "@/lib/supabase/middleware";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Публични пътища (без auth)
+  // Public paths (без auth)
   const isPublic =
     pathname.startsWith("/login") ||
     pathname.startsWith("/logout") ||
@@ -16,23 +16,19 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/images") ||
     pathname.startsWith("/icons");
 
-  // Обновяваме supabase cookies (refresh) и взимаме user
+  // refresh cookies + user
   const { response, user } = await getMiddlewareUserAndResponse(request);
 
-  // Ако е public — пускаме
   if (isPublic) return response;
-
-  // Ако е логнат — пускаме
   if (user) return response;
 
-  // Ако НЕ е логнат — redirect към login
   const url = request.nextUrl.clone();
   url.pathname = "/login";
   url.searchParams.set("next", pathname);
   return NextResponse.redirect(url);
 }
 
-// Пази всичко, освен статични файлове с разширение (png, jpg, css, js и т.н.)
 export const config = {
+  // match everything except files with extension (png, jpg, css, js, ...)
   matcher: ["/((?!.*\\..*).*)"],
 };
